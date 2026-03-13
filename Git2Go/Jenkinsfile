@@ -1,0 +1,152 @@
+pipeline {
+    agent any
+
+    tools {
+        maven 'Maven3'
+    }
+
+    environment {
+        APP_DIR  = '/home/ubuntu/git2go'
+        JAR      = 'Git2Go-0.0.1-SNAPSHOT.jar'
+        REPO_URL = 'https://github.com/Manish0085/Git-To-Go.git'
+    }
+
+    stages {
+
+        stage('Setup Workspace') {
+            steps {
+                echo '=== Setting up workspace ==='
+                sh '''
+                    mkdir -p /home/ubuntu/git2go
+                    if [ ! -d "/home/ubuntu/git2go/.git" ]; then
+                        git clone $REPO_URL /home/ubuntu/git2go
+                        echo "Repo cloned fresh"
+                    else
+                        echo "Repo already exists"
+                    fi
+                '''
+            }
+        }
+
+        stage('Pull Latest Code') {
+            steps {
+                echo '=== Pulling latest code ==='
+                sh '''
+                    cd /home/ubuntu/git2go
+                    git fetch origin
+                    git reset --hard origin/main
+                    echo "Code updated"
+                '''
+            }
+        }
+
+        stage('Check Tools') {
+            steps {
+                echo '=== Verifying Java and Maven ==='
+                sh '''
+                    java -version
+                    mvn -version
+                '''
+            }
+        }
+
+        stage('Create .env') {
+            steps {
+                echo '=== Injecting environment variables ==='
+                withCredentials([file(credentialsId: 'ENV_FILE', variable: 'ENV_FILE')]) {
+                    sh '''
+                        cp $ENV_FILE /home/ubuntu/git2go/.env
+                        chmod 600 /home/ubuntu/git2go/.env
+                        echo ".env created successfully"
+                    '''
+                }
+            }
+        }
+
+        stage('Build JAR') {
+            steps {
+                echo '=== Building Spring Boot JAR ==='
+                sh '''
+                    cd /home/ubuntu/git2go
+                    mvn clean package -DskipTests
+                    echo "Build complete"
+                    ls -lh target/*.jar
+                '''
+            }
+        }
+
+        stage('Stop Old App') {
+            steps {
+                echo '=== Stopping old application ==='
+                sh '''
+                    if pgrep -f "$JAR" > /dev/null; then
+                        pkill -f "$JAR"
+                        echo "Old app stopped"
+                        sleep 5
+                    else
+                        echo "No old app running"
+                    fi
+                '''
+            }
+        }
+
+        stage('Start App') {
+            steps {
+                echo '=== Starting application ==='
+                sh '''
+                    cd /home/ubuntu/git2go
+                    export $(cat .env | grep -v "^#" | grep -v "^$" | xargs)
+                    nohup java -jar target/$JAR \
+                        > /home/ubuntu/app.log 2>&1 &
+                    echo "App started — waiting 30s for startup..."
+                    sleep 30
+                '''
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                echo '=== Running health check ==='
+                sh '''
+                    for i in 1 2 3 4 5; do
+                        echo "Attempt $i of 5..."
+                        if curl -sf http://localhost:8080/actuator/health; then
+                            echo "✅ App is healthy!"
+                            exit 0
+                        fi
+                        sleep 10
+                    done
+                    echo "❌ Health check failed after 5 attempts"
+                    exit 1
+                '''
+            }
+        }
+
+        stage('Done') {
+            steps {
+                sh '''
+                    echo "✅ Git2Go is live at: http://15.206.116.64:8080"
+                    echo "❤️  Health: http://15.206.116.64:8080/actuator/health"
+                    echo "📋 Logs: tail -f /home/ubuntu/app.log"
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '🎉 Deployment successful!'
+        }
+        failure {
+            echo '❌ Deployment failed!'
+            sh '''
+                echo "=== Last 50 lines of app log ==="
+                tail -50 /home/ubuntu/app.log || true
+                pkill -f "Git2Go-0.0.1-SNAPSHOT.jar" || true
+            '''
+        }
+        always {
+            echo '=== Pipeline finished ==='
+        }
+    }
+}
