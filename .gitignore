@@ -1,0 +1,23 @@
+# IntelliJ
+.idea/
+*.iml
+
+# Maven
+target/
+*.class
+*.jar
+*.war
+
+# Docker
+docker-volumes/
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+
+
+
