@@ -14,7 +14,6 @@ spring:
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
-      # RDS requires SSL
       data-source-properties:
         ssl: true
         sslmode: require
@@ -40,10 +39,9 @@ spring:
     redis:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT:6379}
-      # ElastiCache does NOT use password by default
-      # If you enable auth token on ElastiCache, uncomment below:
-      # password: ${REDIS_PASSWORD}
       timeout: 2000ms
+      ssl:
+        enabled: true        # ← this line was missing
       lettuce:
         pool:
           max-active: 8
