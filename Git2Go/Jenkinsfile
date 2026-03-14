@@ -6,7 +6,8 @@ pipeline {
     }
 
     environment {
-        APP_DIR  = '/home/ubuntu/git2go'
+        BASE_DIR = '/home/ubuntu/git2go'
+        APP_DIR  = '/home/ubuntu/git2go/Git2Go'
         JAR      = 'Git2Go-0.0.1-SNAPSHOT.jar'
         REPO_URL = 'https://github.com/Manish0085/Git-To-Go.git'
     }
@@ -17,10 +18,10 @@ pipeline {
             steps {
                 echo '=== Setting up workspace ==='
                 sh '''
-                    mkdir -p /home/ubuntu/git2go
-                    if [ ! -d "/home/ubuntu/git2go/.git" ]; then
-                        git clone $REPO_URL /home/ubuntu/git2go
-                        echo "Repo cloned fresh"
+                    mkdir -p $BASE_DIR
+                    if [ ! -d "$BASE_DIR/.git" ]; then
+                        git clone $REPO_URL $BASE_DIR
+                        echo "Repo cloned"
                     else
                         echo "Repo already exists"
                     fi
@@ -32,7 +33,7 @@ pipeline {
             steps {
                 echo '=== Pulling latest code ==='
                 sh '''
-                    cd /home/ubuntu/git2go
+                    cd $BASE_DIR
                     git fetch origin
                     git reset --hard origin/main
                     echo "Code updated"
@@ -42,7 +43,7 @@ pipeline {
 
         stage('Check Tools') {
             steps {
-                echo '=== Verifying Java and Maven ==='
+                echo '=== Checking Java and Maven ==='
                 sh '''
                     java -version
                     mvn -version
@@ -55,8 +56,8 @@ pipeline {
                 echo '=== Injecting environment variables ==='
                 withCredentials([file(credentialsId: 'ENV_FILE', variable: 'ENV_FILE')]) {
                     sh '''
-                        cp $ENV_FILE /home/ubuntu/git2go/.env
-                        chmod 600 /home/ubuntu/git2go/.env
+                        cp $ENV_FILE $BASE_DIR/.env
+                        chmod 600 $BASE_DIR/.env
                         echo ".env created successfully"
                     '''
                 }
@@ -67,7 +68,7 @@ pipeline {
             steps {
                 echo '=== Building Spring Boot JAR ==='
                 sh '''
-                    cd /home/ubuntu/git2go
+                    cd $APP_DIR
                     mvn clean package -DskipTests
                     echo "Build complete"
                     ls -lh target/*.jar
@@ -94,11 +95,14 @@ pipeline {
             steps {
                 echo '=== Starting application ==='
                 sh '''
-                    cd /home/ubuntu/git2go
-                    export $(cat .env | grep -v "^#" | grep -v "^$" | xargs)
+                    cd $APP_DIR
+
+                    export $(cat $BASE_DIR/.env | grep -v "^#" | grep -v "^$" | xargs)
+
                     nohup java -jar target/$JAR \
                         > /home/ubuntu/app.log 2>&1 &
-                    echo "App started — waiting 30s for startup..."
+
+                    echo "App started. Waiting for startup..."
                     sleep 30
                 '''
             }
@@ -109,14 +113,17 @@ pipeline {
                 echo '=== Running health check ==='
                 sh '''
                     for i in 1 2 3 4 5; do
-                        echo "Attempt $i of 5..."
+                        echo "Attempt $i..."
+
                         if curl -sf http://localhost:8080/actuator/health; then
-                            echo "✅ App is healthy!"
+                            echo "App is healthy"
                             exit 0
                         fi
+
                         sleep 10
                     done
-                    echo "❌ Health check failed after 5 attempts"
+
+                    echo "Health check failed"
                     exit 1
                 '''
             }
@@ -125,9 +132,10 @@ pipeline {
         stage('Done') {
             steps {
                 sh '''
-                    echo "✅ Git2Go is live at: http://15.206.116.64:8080"
-                    echo "❤️  Health: http://15.206.116.64:8080/actuator/health"
-                    echo "📋 Logs: tail -f /home/ubuntu/app.log"
+                    echo "Deployment successful!"
+                    echo "App URL: http://15.206.116.64:8080"
+                    echo "Health: http://15.206.116.64:8080/actuator/health"
+                    echo "Logs: tail -f /home/ubuntu/app.log"
                 '''
             }
         }
@@ -135,16 +143,18 @@ pipeline {
 
     post {
         success {
-            echo '🎉 Deployment successful!'
+            echo 'Deployment successful!'
         }
+
         failure {
-            echo '❌ Deployment failed!'
+            echo 'Deployment failed!'
             sh '''
                 echo "=== Last 50 lines of app log ==="
                 tail -50 /home/ubuntu/app.log || true
-                pkill -f "Git2Go-0.0.1-SNAPSHOT.jar" || true
+                pkill -f "$JAR" || true
             '''
         }
+
         always {
             echo '=== Pipeline finished ==='
         }
