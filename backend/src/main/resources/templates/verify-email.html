@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+</head>
+<body style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f4f5; margin: 0; padding: 20px;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        <!-- Header -->
+        <div style="background-color: #2563eb; padding: 30px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Verify Your Email</h1>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 30px;">
+            <h2 style="color: #18181b; margin-top: 0;">Hi <span th:text="${userName}">User</span>,</h2>
+            <p style="color: #52525b; line-height: 1.6;">
+                Please verify your email address to activate your Git2Go account. Click the button below:
+            </p>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a th:href="${verificationUrl}"
+                   style="background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 14px 36px; border-radius: 8px; font-weight: 600; display: inline-block; font-size: 16px;">
+                    Verify Email
+                </a>
+            </div>
+
+            <p style="color: #a1a1aa; font-size: 13px; line-height: 1.6;">
+                This link expires in 24 hours. If you didn't create an account, you can safely ignore this email.
+            </p>
+
+            <div style="background-color: #f4f4f5; border-radius: 8px; padding: 15px; margin-top: 20px;">
+                <p style="color: #71717a; font-size: 12px; margin: 0; word-break: break-all;">
+                    Or copy this link: <span th:text="${verificationUrl}">link</span>
+                </p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="background-color: #f4f4f5; padding: 20px; text-align: center;">
+            <p style="color: #a1a1aa; font-size: 12px; margin: 0;">Git2Go — Deploy with confidence</p>
+        </div>
+    </div>
+</body>
+</html>

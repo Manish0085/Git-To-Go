@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+</head>
+<body style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f4f5; margin: 0; padding: 20px;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        <!-- Header -->
+        <div style="background-color: #16a34a; padding: 30px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Deployment Successful</h1>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 30px;">
+            <h2 style="color: #18181b; margin-top: 0;">
+                <span th:text="${projectName}">my-app</span>
+                <span style="color: #a1a1aa; font-weight: normal;">(v<span th:text="${version}">1</span>)</span>
+            </h2>
+
+            <p style="color: #52525b; line-height: 1.6;">
+                Your application has been deployed successfully and is now live.
+            </p>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a th:href="${deployedUrl}"
+                   style="background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 600; display: inline-block;">
+                    View Live App
+                </a>
+            </div>
+
+            <div style="background-color: #f0fdf4; border-left: 4px solid #16a34a; padding: 15px; border-radius: 4px;">
+                <p style="color: #166534; margin: 0;">
+                    <strong>Live URL:</strong> <span th:text="${deployedUrl}">http://localhost:3001</span>
+                </p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="background-color: #f4f4f5; padding: 20px; text-align: center;">
+            <p style="color: #a1a1aa; font-size: 12px; margin: 0;">Git2Go — Deploy with confidence</p>
+        </div>
+    </div>
+</body>
+</html>

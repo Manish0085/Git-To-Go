@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+</head>
+<body style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f4f5; margin: 0; padding: 20px;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        <!-- Header -->
+        <div style="background-color: #18181b; padding: 30px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 28px;">Git2Go</h1>
+            <p style="color: #a1a1aa; margin: 8px 0 0 0; font-size: 14px;">Single Click Deployment System</p>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 30px;">
+            <h2 style="color: #18181b; margin-top: 0;">Welcome, <span th:text="${userName}">User</span>!</h2>
+            <p style="color: #52525b; line-height: 1.6;">
+                Your account has been created successfully. You can now deploy your applications with a single click.
+            </p>
+
+            <div style="background-color: #f4f4f5; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                <h3 style="color: #18181b; margin-top: 0;">Getting Started:</h3>
+                <ol style="color: #52525b; line-height: 1.8;">
+                    <li>Create a new project</li>
+                    <li>Link your GitHub repository</li>
+                    <li>Click Deploy</li>
+                    <li>Your app is live!</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="background-color: #f4f4f5; padding: 20px; text-align: center;">
+            <p style="color: #a1a1aa; font-size: 12px; margin: 0;">Git2Go — Deploy with confidence</p>
+        </div>
+    </div>
+</body>
+</html>

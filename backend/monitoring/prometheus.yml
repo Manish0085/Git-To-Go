@@ -1,0 +1,29 @@
+# Prometheus Configuration
+# Defines WHERE to scrape metrics from and HOW often
+
+global:
+  scrape_interval: 15s      # Har 15 second pe metrics collect
+  evaluation_interval: 15s  # Har 15 second pe rules evaluate
+
+scrape_configs:
+  # ===== 1. Spring Boot App Metrics =====
+  # Actuator /actuator/prometheus endpoint se app metrics
+  - job_name: 'spring-boot-app'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['host.docker.internal:8080']  # Host machine pe running app
+        labels:
+          application: 'single-click-deployment-system'
+
+  # ===== 2. Container Metrics via cAdvisor =====
+  # User ke deployed containers ki CPU, Memory, Network
+  - job_name: 'cadvisor'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['cadvisor:8080']  # Docker network pe cAdvisor
+
+  # ===== 3. Prometheus Self-Monitoring =====
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

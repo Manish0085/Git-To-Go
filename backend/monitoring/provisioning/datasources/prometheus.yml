@@ -1,0 +1,11 @@
+# Grafana auto-provision — Prometheus data source automatically add ho jaayega
+# Manual setup nahi karna padega Grafana UI me
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true

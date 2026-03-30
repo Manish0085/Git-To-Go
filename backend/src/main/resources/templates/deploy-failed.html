@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+</head>
+<body style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f4f5; margin: 0; padding: 20px;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        <!-- Header -->
+        <div style="background-color: #dc2626; padding: 30px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Deployment Failed</h1>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 30px;">
+            <h2 style="color: #18181b; margin-top: 0;">
+                <span th:text="${projectName}">my-app</span>
+                <span style="color: #a1a1aa; font-weight: normal;">(v<span th:text="${version}">1</span>)</span>
+            </h2>
+
+            <p style="color: #52525b; line-height: 1.6;">
+                Your deployment has failed. Please check the error details below and try again.
+            </p>
+
+            <div style="background-color: #fef2f2; border-left: 4px solid #dc2626; padding: 15px; border-radius: 4px; margin: 20px 0;">
+                <p style="color: #991b1b; margin: 0;">
+                    <strong>Error:</strong><br/>
+                    <span th:text="${failureReason}">Unknown error</span>
+                </p>
+            </div>
+
+            <div style="background-color: #f4f4f5; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                <h3 style="color: #18181b; margin-top: 0;">Common Fixes:</h3>
+                <ul style="color: #52525b; line-height: 1.8;">
+                    <li>Check your Dockerfile or build configuration</li>
+                    <li>Verify environment variables are set correctly</li>
+                    <li>Review build logs for detailed error information</li>
+                    <li>Ensure your repository URL and branch are correct</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="background-color: #f4f4f5; padding: 20px; text-align: center;">
+            <p style="color: #a1a1aa; font-size: 12px; margin: 0;">Git2Go — Deploy with confidence</p>
+        </div>
+    </div>
+</body>
+</html>
