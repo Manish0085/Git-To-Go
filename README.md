@@ -70,6 +70,381 @@ User clicks "Deploy"
 
 ---
 
+## Sequence Diagrams
+
+### 1. User Signup & Email Verification
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Frontend
+    participant AuthController
+    participant AuthService
+    participant EmailVerificationService
+    participant EmailService
+    participant DB as PostgreSQL
+
+    User->>Frontend: Fill signup form (name, email, password)
+    Frontend->>AuthController: POST /api/auth/signup
+    AuthController->>AuthService: signup(request)
+    AuthService->>DB: Check if email exists
+    DB-->>AuthService: No duplicate found
+    AuthService->>DB: Save User (emailVerified=false, password=BCrypt hash)
+    AuthService->>EmailVerificationService: sendVerificationEmail(user)
+    EmailVerificationService->>DB: Save verificationToken (UUID, 24hr expiry)
+    EmailVerificationService->>EmailService: sendVerificationEmail(email, token)
+    EmailService-->>User: Verification email sent (async)
+    AuthService-->>AuthController: Success
+    AuthController-->>Frontend: 200 OK "Check your email"
+    Frontend-->>User: Show "Verify your email" toast
+
+    Note over User,DB: User clicks verification link in email
+
+    User->>AuthController: GET /api/auth/verify-email?token=abc123
+    AuthController->>EmailVerificationService: verifyEmail(token)
+    EmailVerificationService->>DB: Find user by token
+    EmailVerificationService->>DB: Set emailVerified=true, nullify token
+    EmailVerificationService->>EmailService: sendWelcomeEmail(email)
+    EmailService-->>User: Welcome email (async)
+    EmailVerificationService-->>AuthController: Verified
+    AuthController-->>User: 200 OK "Email verified"
+```
+
+### 2. Login (Email/Password + OAuth2)
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Frontend
+    participant AuthController
+    participant AuthService
+    participant JwtTokenProvider
+    participant RefreshTokenService
+    participant DB as PostgreSQL
+
+    rect rgb(40, 40, 60)
+    Note over User,DB: Email/Password Login
+    User->>Frontend: Enter email & password
+    Frontend->>AuthController: POST /api/auth/login
+    AuthController->>AuthService: login(email, password)
+    AuthService->>DB: Find user by email
+    AuthService->>AuthService: BCrypt.matches(password, hash)
+    AuthService->>AuthService: Check emailVerified == true
+    AuthService->>JwtTokenProvider: generateToken(email)
+    JwtTokenProvider-->>AuthService: JWT (HMAC-SHA256, 1hr expiry)
+    AuthService->>RefreshTokenService: createRefreshToken(user)
+    RefreshTokenService->>DB: Save RefreshToken (UUID, 7d expiry)
+    RefreshTokenService-->>AuthService: refreshToken
+    AuthService-->>AuthController: AuthResponse {accessToken, refreshToken, user}
+    AuthController-->>Frontend: 200 OK + tokens
+    Frontend->>Frontend: Store tokens in localStorage
+    Frontend-->>User: Redirect to /dashboard
+    end
+
+    rect rgb(40, 60, 40)
+    Note over User,DB: OAuth2 Login (GitHub/Google)
+    User->>Frontend: Click "Login with GitHub"
+    Frontend->>AuthController: GET /oauth2/authorization/github
+    AuthController-->>User: Redirect to GitHub login page
+    User->>User: Authorize on GitHub
+    User->>AuthController: GitHub callback with auth code
+    AuthController->>AuthController: Exchange code for GitHub access token
+    AuthController->>AuthController: Fetch user profile from GitHub API
+    AuthController->>DB: Create or update User (GITHUB provider)
+    AuthController->>DB: Encrypt & store GitHub access token (AES-256-GCM)
+    AuthController->>JwtTokenProvider: generateToken(email)
+    AuthController->>RefreshTokenService: createRefreshToken(user)
+    AuthController-->>Frontend: Redirect to /oauth2/callback?token=xxx&refreshToken=yyy
+    Frontend->>Frontend: Extract tokens from URL, store in localStorage
+    Frontend->>AuthController: GET /api/user/me (with Bearer token)
+    AuthController-->>Frontend: User profile
+    Frontend-->>User: Redirect to /dashboard
+    end
+```
+
+### 3. One-Click Deployment (Core Flow)
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Frontend
+    participant DeployController
+    participant BuildService
+    participant LangDetector as LanguageDetector
+    participant DockerfileGen as DockerfileGenerator
+    participant Docker as DockerOrchestrator
+    participant DB as PostgreSQL
+    participant Email as EmailService
+
+    User->>Frontend: Click "Deploy" button
+    Frontend->>DeployController: POST /api/projects/{id}/deploy
+
+    rect rgb(50, 40, 40)
+    Note over DeployController,DB: Synchronous (Controller Thread)
+    DeployController->>BuildService: triggerDeployment(projectId, userEmail)
+    BuildService->>DB: Validate project ownership
+    BuildService->>DB: Create Deployment (status: QUEUED)
+    BuildService->>DB: Project status → BUILDING
+    BuildService->>BuildService: Eagerly load env vars into HashMap
+    BuildService-->>DeployController: DeploymentResponse
+    DeployController-->>Frontend: 202 Accepted + deploymentId
+    Frontend-->>User: Show "Deployment started" toast
+    end
+
+    Note over Frontend: Frontend polls deployment status
+
+    rect rgb(40, 40, 55)
+    Note over BuildService,Docker: Async (@Async "buildExecutor" thread pool)
+
+    BuildService->>DB: Update status → CLONING
+    BuildService->>BuildService: git clone --depth 1 --branch main <repo><br/>(ProcessBuilder, 5min timeout)
+    BuildService->>BuildService: Clone successful
+
+    BuildService->>LangDetector: detectLanguage(projectDir)
+    LangDetector->>LangDetector: Check marker files<br/>(package.json? pom.xml? go.mod?)
+    LangDetector-->>BuildService: NODEJS / JAVA_MAVEN / PYTHON / etc.
+
+    BuildService->>LangDetector: hasDockerfile(projectDir)?
+    alt No Dockerfile in repo
+        LangDetector-->>BuildService: false
+        BuildService->>DockerfileGen: generateDockerfile(dir, language, port)
+        DockerfileGen-->>BuildService: Dockerfile written to project dir
+    else Dockerfile exists
+        LangDetector-->>BuildService: true
+        BuildService->>BuildService: Using existing Dockerfile
+    end
+
+    BuildService->>DB: Update status → BUILDING
+    BuildService->>Docker: buildImage(dir, "git2go/myapp:v1")
+    Docker->>Docker: docker build -t git2go/myapp:v1 .<br/>(ProcessBuilder, 10min timeout)
+    Docker-->>BuildService: Image built
+
+    BuildService->>Docker: stopContainer(oldContainerId)
+    BuildService->>Docker: removeContainer(oldContainerId)
+    Note over Docker: Old container gracefully stopped
+
+    BuildService->>DB: Update status → DEPLOYING
+    BuildService->>Docker: runContainer(image, port, envVars, 512MB, 0.5CPU)
+    Docker->>Docker: docker run -d --name git2go-myapp-v1<br/>-p 9001:3000 --memory 512m --cpus 0.5<br/>-e KEY=VAL git2go/myapp:v1
+    Docker-->>BuildService: containerId
+
+    BuildService->>DB: Save containerId, hostPort, deployedUrl
+    BuildService->>DB: Update status → RUNNING
+    BuildService->>DB: Project status → RUNNING, deployedUrl saved
+    BuildService->>Email: sendDeploymentSuccessEmail(user, url, version)
+    Email-->>User: Success email (async)
+    end
+
+    Frontend->>DeployController: GET /api/deployments/{id} (polling)
+    DeployController-->>Frontend: {status: RUNNING, deployedUrl: "http://host:9001"}
+    Frontend-->>User: Show deployed URL + RUNNING badge
+```
+
+### 4. GitHub Webhook Auto-Deploy
+
+```mermaid
+sequenceDiagram
+    actor Developer
+    participant GitHub
+    participant WebhookController
+    participant WebhookService
+    participant SignatureVerifier as GitHubSignatureVerifier
+    participant BuildService
+    participant DB as PostgreSQL
+
+    Developer->>GitHub: git push origin main
+
+    GitHub->>WebhookController: POST /api/webhooks/github/{projectId}<br/>Headers: X-Hub-Signature-256, X-GitHub-Event<br/>Body: push event payload
+
+    WebhookController->>WebhookService: processWebhookEvent(projectId, payload, signature)
+
+    WebhookService->>DB: Find project + decrypt webhook secret (AES-256-GCM)
+
+    WebhookService->>SignatureVerifier: verifySignature(payload, secret, signature)
+    SignatureVerifier->>SignatureVerifier: HMAC-SHA256(payload, secret)
+    SignatureVerifier->>SignatureVerifier: MessageDigest.isEqual()<br/>(timing-safe comparison)
+    SignatureVerifier-->>WebhookService: Signature valid
+
+    WebhookService->>WebhookService: Check autoDeployEnabled == true
+    WebhookService->>DB: Check project not already BUILDING
+    WebhookService->>WebhookService: Parse JSON payload
+    WebhookService->>WebhookService: Extract branch from "refs/heads/main"
+    WebhookService->>WebhookService: Match branch == project.branch?
+
+    alt Branch matches
+        WebhookService->>BuildService: triggerDeployment(projectId, userEmail)
+        Note over BuildService: Same async pipeline as manual deploy
+        BuildService-->>WebhookService: DeploymentResponse
+        WebhookService-->>WebhookController: 200 OK "Deployment triggered"
+    else Branch doesn't match
+        WebhookService-->>WebhookController: 200 OK "Branch ignored"
+    end
+
+    WebhookController-->>GitHub: 200 OK
+```
+
+### 5. JWT Token Refresh (Auto-Refresh by Frontend)
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Frontend
+    participant AxiosInterceptor as Axios Interceptor
+    participant API as Any API Endpoint
+    participant AuthController
+    participant RefreshTokenService
+    participant JwtTokenProvider
+    participant DB as PostgreSQL
+
+    User->>Frontend: Perform any action (e.g., view dashboard)
+    Frontend->>API: GET /api/projects (Bearer: expired_token)
+    API-->>AxiosInterceptor: 401 Unauthorized
+
+    rect rgb(50, 50, 35)
+    Note over AxiosInterceptor,DB: Automatic Token Refresh
+    AxiosInterceptor->>AuthController: POST /api/auth/refresh {refreshToken}
+    AuthController->>RefreshTokenService: verifyRefreshToken(token)
+    RefreshTokenService->>DB: Find RefreshToken by token value
+    RefreshTokenService->>RefreshTokenService: Check expiry (< 7 days)
+    RefreshTokenService->>DB: Delete old refresh token
+    RefreshTokenService->>DB: Create new refresh token
+    RefreshTokenService-->>AuthController: New refresh token
+    AuthController->>JwtTokenProvider: generateToken(email)
+    JwtTokenProvider-->>AuthController: New JWT (1hr expiry)
+    AuthController-->>AxiosInterceptor: {accessToken, refreshToken}
+    AxiosInterceptor->>AxiosInterceptor: Update localStorage with new tokens
+    end
+
+    AxiosInterceptor->>API: GET /api/projects (Bearer: new_token) [retry]
+    API-->>Frontend: 200 OK + project data
+    Frontend-->>User: Dashboard rendered (seamless experience)
+```
+
+### 6. Real-Time Log Streaming (WebSocket)
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Frontend
+    participant WebSocket as WebSocket /ws
+    participant LogController
+    participant LogService
+    participant Docker as Docker Engine
+
+    User->>Frontend: Open project detail → Build Logs tab
+
+    Frontend->>WebSocket: CONNECT /ws (SockJS + STOMP)
+    WebSocket-->>Frontend: CONNECTED
+
+    Frontend->>WebSocket: SUBSCRIBE /topic/logs/{deploymentId}
+
+    Frontend->>LogController: POST /deployments/{id}/logs/stream/start
+    LogController->>LogService: startRuntimeLogStream(deploymentId)
+
+    rect rgb(40, 50, 40)
+    Note over LogService,Docker: @Async — 2 hour timeout
+    LogService->>Docker: docker logs -f {containerId}<br/>(ProcessBuilder, follows output)
+
+    loop Every new log line from container
+        Docker-->>LogService: log line
+        LogService->>LogService: Dedup check (ConcurrentHashMap)
+        LogService->>WebSocket: SEND /topic/logs/{deploymentId}<br/>{message, level, timestamp}
+        WebSocket-->>Frontend: MESSAGE {log entry}
+        Frontend-->>User: Log line appears in real-time
+    end
+    end
+
+    User->>Frontend: Navigate away / Click stop
+    Frontend->>LogController: POST /deployments/{id}/logs/stream/stop
+    LogController->>LogService: stopRuntimeLogStream(deploymentId)
+    LogService->>LogService: Process.destroy()
+    Frontend->>WebSocket: UNSUBSCRIBE
+    Frontend->>WebSocket: DISCONNECT
+```
+
+### 7. Health Check & Auto-Recovery
+
+```mermaid
+sequenceDiagram
+    participant Scheduler as @Scheduled (60s)
+    participant HealthService as HealthCheckService
+    participant Docker as DockerOrchestrator
+    participant App as Deployed Container
+    participant DB as PostgreSQL
+    participant Email as EmailService
+
+    loop Every 60 seconds
+        Scheduler->>HealthService: checkAllDeployments()
+        HealthService->>DB: Find all deployments WHERE status = RUNNING
+
+        loop For each running deployment
+            HealthService->>Docker: getContainerStatus(containerId)
+            Docker->>Docker: docker inspect {containerId}
+            Docker-->>HealthService: RUNNING / EXITED
+
+            alt Container is running
+                HealthService->>App: HTTP GET http://localhost:{port}/<br/>(5 second timeout)
+                alt HTTP 2xx response
+                    App-->>HealthService: 200 OK
+                    HealthService->>HealthService: Reset failure counter to 0
+                else HTTP error or timeout
+                    App-->>HealthService: Timeout / 5xx
+                    HealthService->>HealthService: Increment failure counter
+                    alt failureCount >= 3
+                        HealthService->>DB: Deployment status → FAILED
+                        HealthService->>DB: Project status → FAILED
+                        Note over HealthService: 3 consecutive failures = mark as failed
+                    end
+                end
+            else Container exited/crashed
+                HealthService->>DB: Deployment status → FAILED
+                HealthService->>DB: Project status → FAILED
+            end
+        end
+    end
+```
+
+### 8. Admin Force-Stop & Audit Trail
+
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant Frontend
+    participant AdminController
+    participant AdminService
+    participant Docker as DockerOrchestrator
+    participant AuditAspect
+    participant DB as PostgreSQL
+
+    Admin->>Frontend: Click "Force Stop" on a deployment
+    Frontend->>AdminController: POST /api/admin/deployments/{id}/stop
+
+    Note over AdminController: @PreAuthorize("hasRole('ADMIN')")
+
+    AdminController->>AdminService: forceStopDeployment(deploymentId)
+
+    rect rgb(50, 40, 50)
+    Note over AdminService,DB: @Auditable(action = "ADMIN_FORCE_STOP")
+    AuditAspect->>AuditAspect: Capture: admin email, IP address, timestamp
+
+    AdminService->>DB: Find deployment (any user's)
+    AdminService->>Docker: stopContainer(containerId)
+    Docker->>Docker: docker stop {containerId}
+    AdminService->>Docker: removeContainer(containerId)
+    Docker->>Docker: docker rm {containerId}
+    AdminService->>DB: Deployment status → FAILED
+    AdminService->>DB: Project status → FAILED
+
+    AuditAspect->>DB: Save AuditLog {<br/>  action: ADMIN_FORCE_STOP,<br/>  userEmail: admin@email.com,<br/>  result: SUCCESS,<br/>  resourceType: DEPLOYMENT,<br/>  resourceId: {id},<br/>  ipAddress: 192.168.1.x,<br/>  timestamp: now<br/>}
+    end
+
+    AdminService-->>AdminController: Success
+    AdminController-->>Frontend: 200 OK
+    Frontend-->>Admin: Show "Deployment stopped" toast
+```
+
+---
+
 ## Tech Stack
 
 | Layer | Technology | Purpose |
