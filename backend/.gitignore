@@ -31,8 +31,3 @@ build/
 
 ### VS Code ###
 .vscode/
-
-
-# Spring config (sensitive)
-src/main/resources/application.yaml
-src/main/resources/application.properties
