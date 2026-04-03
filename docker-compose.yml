@@ -25,6 +25,8 @@ services:
       dockerfile: Dockerfile
     container_name: git2go-backend
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       # Database (AWS RDS)
       SPRING_DATASOURCE_URL: ${DB_URL:-jdbc:postgresql://localhost:5432/deploydb}
