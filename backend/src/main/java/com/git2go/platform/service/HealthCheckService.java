@@ -152,22 +152,24 @@ public class HealthCheckService {
         }
 
         long startTime = System.currentTimeMillis();
+        HttpURLConnection conn = null;
         try {
             URI uri = URI.create("http://localhost:" + hostPort + "/");
-            HttpURLConnection conn = (HttpURLConnection) uri.toURL().openConnection();
+            conn = (HttpURLConnection) uri.toURL().openConnection();
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(HEALTH_CHECK_TIMEOUT_MS);
             conn.setReadTimeout(HEALTH_CHECK_TIMEOUT_MS);
 
             int statusCode = conn.getResponseCode();
             long responseTime = System.currentTimeMillis() - startTime;
-            conn.disconnect();
 
-            // 2xx ya 3xx = healthy
-            boolean healthy = statusCode >= 200 && statusCode < 400;
+            // App ne respond kiya — matlab chal raha hai
+            // 404 = app running hai, bas "/" route nahi hai — still healthy
+            // 5xx = server error — unhealthy
+            boolean healthy = statusCode < 500;
 
             return buildResponse(deploymentId, "RUNNING", healthy,
-                    healthy ? "HTTP " + statusCode + " OK" : "HTTP " + statusCode,
+                    healthy ? "HTTP " + statusCode + " OK" : "HTTP " + statusCode + " Server Error",
                     statusCode, responseTime);
 
         } catch (java.net.ConnectException e) {
@@ -182,6 +184,8 @@ public class HealthCheckService {
             long responseTime = System.currentTimeMillis() - startTime;
             return buildResponse(deploymentId, "RUNNING", false,
                     "Health check error: " + e.getMessage(), 0, responseTime);
+        } finally {
+            if (conn != null) conn.disconnect();
         }
     }
 

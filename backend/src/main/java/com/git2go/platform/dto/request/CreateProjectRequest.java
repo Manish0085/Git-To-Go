@@ -22,7 +22,7 @@ public class CreateProjectRequest {
     @Pattern(regexp = "^[\\w./-]+$", message = "Invalid branch name")
     private String branch = "main";
 
-    @NotNull(message = "Port is required")
+    // Port is optional — auto-detected during build if not provided
     @Min(value = 1, message = "Port must be between 1 and 65535")
     @Max(value = 65535, message = "Port must be between 1 and 65535")
     private Integer port;

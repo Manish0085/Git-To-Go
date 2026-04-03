@@ -2,6 +2,7 @@ package com.git2go.platform.logging;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
@@ -31,6 +32,7 @@ import java.util.stream.Stream;
  */
 @Slf4j
 @Service
+@ConditionalOnProperty(name = "app.logs.storage", havingValue = "file", matchIfMissing = true)
 public class FileLogStorageService implements LogStorageService {
 
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;

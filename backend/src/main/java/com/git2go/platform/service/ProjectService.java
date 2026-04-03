@@ -10,6 +10,7 @@ import com.git2go.platform.entity.Project;
 import com.git2go.platform.entity.User;
 import com.git2go.platform.enums.ProjectStatus;
 import com.git2go.platform.exception.ApiException;
+import com.git2go.platform.orchestrator.ContainerOrchestrator;
 import com.git2go.platform.repository.ProjectRepository;
 import com.git2go.platform.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ public class ProjectService {
 
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
+    private final ContainerOrchestrator containerOrchestrator;
 
     @Transactional
     @Auditable(action = "CREATE_PROJECT")
@@ -40,7 +42,7 @@ public class ProjectService {
         User user = getUserByEmail(userEmail);
 
         // Project limit check — free tier max 5
-        long currentCount = projectRepository.findByUserId(user.getId()).size();
+        long currentCount = projectRepository.countByUserId(user.getId());
         if (currentCount >= user.getMaxProjects()) {
             throw new ApiException(
                     "Project limit reached. Maximum " + user.getMaxProjects() + " projects allowed.",
@@ -55,7 +57,7 @@ public class ProjectService {
                 .name(request.getName())
                 .repoUrl(request.getRepoUrl())
                 .branch(request.getBranch())
-                .port(request.getPort())
+                .port(request.getPort() != null ? request.getPort() : 0) // 0 = auto-detect during build
                 .status(ProjectStatus.CREATED)
                 .autoDeployEnabled(false)
                 .user(user)
@@ -139,6 +141,28 @@ public class ProjectService {
     @Auditable(action = "DELETE_PROJECT")
     public void deleteProject(UUID projectId, String userEmail) {
         Project project = getProjectAndValidateOwner(projectId, userEmail);
+
+        // Stop and remove all Docker containers + images before DB delete
+        for (var deployment : project.getDeployments()) {
+            if (deployment.getContainerId() != null) {
+                try {
+                    containerOrchestrator.stopContainer(deployment.getContainerId());
+                    containerOrchestrator.removeContainer(deployment.getContainerId());
+                    log.info("Stopped and removed container: {}", deployment.getContainerId());
+                } catch (Exception e) {
+                    log.warn("Failed to cleanup container {}: {}", deployment.getContainerId(), e.getMessage());
+                }
+            }
+            if (deployment.getImageId() != null) {
+                try {
+                    containerOrchestrator.removeImage(deployment.getImageId());
+                    log.info("Removed image: {}", deployment.getImageId());
+                } catch (Exception e) {
+                    log.warn("Failed to remove image {}: {}", deployment.getImageId(), e.getMessage());
+                }
+            }
+        }
+
         projectRepository.delete(project);
         log.info("Project deleted: {} by user: {}", project.getName(), userEmail);
     }

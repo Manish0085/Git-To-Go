@@ -60,4 +60,16 @@ public interface ContainerOrchestrator {
      * Container ka resource usage (CPU, Memory)
      */
     ContainerStats getContainerStats(String containerId);
+
+    /**
+     * Docker image remove karo
+     */
+    void removeImage(String imageId);
+
+    /**
+     * Built image se exposed port detect karo
+     * docker inspect se image ki EXPOSE instruction padho
+     * @return detected port, ya 0 agar nahi mila
+     */
+    int getExposedPort(String imageId);
 }

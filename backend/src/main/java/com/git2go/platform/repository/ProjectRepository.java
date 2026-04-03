@@ -20,4 +20,7 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
 
     // Check project name already exists for this user (duplicate prevent)
     boolean existsByNameAndUserId(String name, UUID userId);
+
+    // Count user's projects — efficient (SELECT COUNT vs loading all rows)
+    long countByUserId(UUID userId);
 }

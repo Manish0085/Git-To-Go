@@ -1,23 +1,39 @@
-# IntelliJ
+# ==================== SECRETS (NEVER COMMIT) ====================
+.env
+.env.local
+.env.production
+.env.staging
+**/.env
+!**/.env.example
+
+# ==================== IntelliJ ====================
 .idea/
 *.iml
 
-# Maven
+# ==================== Maven ====================
 target/
 *.class
 *.jar
 *.war
 
-# Docker
+# ==================== Node ====================
+node_modules/
+dist/
+.vite/
+
+# ==================== Docker ====================
 docker-volumes/
 
-# Environment
-.env
-
-# OS
+# ==================== OS ====================
 .DS_Store
 Thumbs.db
 
+# ==================== Logs ====================
+*.log
+logs/
 
+# ==================== SSL/Certbot ====================
+certbot/
 
-
+# ==================== Jenkins ====================
+jenkins_data/

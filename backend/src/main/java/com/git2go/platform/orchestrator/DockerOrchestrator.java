@@ -76,7 +76,10 @@ public class DockerOrchestrator implements ContainerOrchestrator {
             throw new ApiException("Failed to start container: " + result.output(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
-        String containerId = result.output().trim();
+        String containerId = result.output() != null ? result.output().trim() : "";
+        if (containerId.isEmpty()) {
+            throw new ApiException("Container started but no ID returned", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
         log.info("Container started: {} (ID: {})", request.getContainerName(), containerId);
         return containerId;
     }
@@ -109,6 +112,40 @@ public class DockerOrchestrator implements ContainerOrchestrator {
             // Log warning but don't throw — container might already be removed
             log.warn("Failed to remove container {}: {}", containerId, result.output());
         }
+    }
+
+    @Override
+    public void removeImage(String imageId) {
+        log.info("Removing image: {}", imageId);
+        CommandResult result = executeCommand(List.of("docker", "rmi", "-f", imageId), COMMAND_TIMEOUT_MINUTES);
+        if (!result.success()) {
+            log.warn("Failed to remove image {}: {}", imageId, result.output());
+        }
+    }
+
+    @Override
+    public int getExposedPort(String imageId) {
+        // docker inspect --format '{{json .Config.ExposedPorts}}' image
+        // Returns: {"8080/tcp":{}} or {"3000/tcp":{}}
+        CommandResult result = executeCommand(
+                List.of("docker", "inspect", "--format", "{{json .Config.ExposedPorts}}", imageId),
+                COMMAND_TIMEOUT_MINUTES
+        );
+
+        if (!result.success() || result.output().isBlank()) return 0;
+
+        try {
+            // Parse "{"8080/tcp":{}}" → extract 8080
+            String output = result.output().trim();
+            java.util.regex.Matcher matcher = java.util.regex.Pattern
+                    .compile("\"(\\d+)/tcp\"").matcher(output);
+            if (matcher.find()) {
+                return Integer.parseInt(matcher.group(1));
+            }
+        } catch (Exception e) {
+            log.debug("Could not parse exposed port from image: {}", e.getMessage());
+        }
+        return 0;
     }
 
     @Override
@@ -165,6 +202,7 @@ public class DockerOrchestrator implements ContainerOrchestrator {
             log.debug("Executing: {}", String.join(" ", command));
 
             ProcessBuilder processBuilder = new ProcessBuilder(command);
+            processBuilder.environment().put("DOCKER_BUILDKIT", "0");
             processBuilder.redirectErrorStream(true);
 
             process = processBuilder.start();

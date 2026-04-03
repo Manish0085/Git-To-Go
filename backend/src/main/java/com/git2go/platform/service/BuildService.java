@@ -166,11 +166,36 @@ public class BuildService {
             }
             addLog(deployment, "INFO", "Detected language: " + language);
 
+            // ===== STEP 2.5: AUTO-DETECT PORT =====
+            if (containerPort <= 0) {
+                // User ne port nahi diya — auto-detect karo
+                containerPort = languageDetector.detectPort(projectDir, language);
+                addLog(deployment, "INFO", "Auto-detected port: " + containerPort);
+            } else {
+                // User ne port diya — verify karo config se
+                int detectedPort = languageDetector.detectPort(projectDir, language);
+                if (detectedPort != containerPort) {
+                    addLog(deployment, "WARN", "User port (" + containerPort + ") differs from detected (" + detectedPort + "). Using detected port.");
+                    containerPort = detectedPort;
+                }
+            }
+
+            // Update project port in DB so UI shows correct port
+            Project proj = projectRepository.findById(projectId).orElse(null);
+            if (proj != null && proj.getPort() != containerPort) {
+                proj.setPort(containerPort);
+                projectRepository.save(proj);
+            }
+
             // ===== STEP 3: GENERATE DOCKERFILE =====
             if (!languageDetector.hasDockerfile(projectDir)) {
                 addLog(deployment, "INFO", "No Dockerfile found. Generating for " + language);
                 dockerfileGenerator.generateDockerfile(projectDir, language, containerPort);
                 addLog(deployment, "INFO", "Dockerfile generated successfully");
+            } else if (language != ProjectLanguage.UNKNOWN && !isMultiStageDockerfile(projectDir)) {
+                addLog(deployment, "WARN", "Existing Dockerfile is single-stage (no build step). Replacing with multi-stage Dockerfile for " + language);
+                dockerfileGenerator.generateDockerfile(projectDir, language, containerPort);
+                addLog(deployment, "INFO", "Multi-stage Dockerfile generated successfully");
             } else {
                 addLog(deployment, "INFO", "Using existing Dockerfile from repository");
             }
@@ -189,6 +214,20 @@ public class BuildService {
             deployment.setImageId(imageName);
             deploymentRepository.save(deployment);
             addLog(deployment, "INFO", "Docker image built successfully");
+
+            // ===== STEP 4.5: DETECT PORT FROM BUILT IMAGE =====
+            // Image build ho chuki hai — ab image inspect se actual EXPOSE port nikalo
+            // Ye sabse reliable hai kyunki Dockerfile (user ka ya generated) already processed hai
+            int imagePort = containerOrchestrator.getExposedPort(imageName);
+            if (imagePort > 0 && imagePort != containerPort) {
+                addLog(deployment, "INFO", "Port from built image: " + imagePort + " (was: " + containerPort + ")");
+                containerPort = imagePort;
+                proj = projectRepository.findById(projectId).orElse(null);
+                if (proj != null) {
+                    proj.setPort(containerPort);
+                    projectRepository.save(proj);
+                }
+            }
 
             // ===== STEP 5: STOP OLD CONTAINER =====
             stopOldContainer(projectId);
@@ -413,6 +452,24 @@ public class BuildService {
     private void addLog(Deployment deployment, String level, String message) {
         // Write to file system — NOT to DB
         logStorageService.appendLog(deployment.getId(), level, message);
+    }
+
+    /**
+     * Check if existing Dockerfile is multi-stage (has build step like "FROM ... AS builder").
+     * Single-stage Dockerfiles assume pre-built artifacts (e.g., target/*.jar) which won't
+     * exist after a fresh git clone — so we need to replace them with our multi-stage version.
+     */
+    private boolean isMultiStageDockerfile(Path projectDir) {
+        try {
+            String content = Files.readString(projectDir.resolve("Dockerfile")).toUpperCase();
+            long fromCount = content.lines()
+                    .filter(line -> line.trim().startsWith("FROM"))
+                    .count();
+            return fromCount >= 2; // Multi-stage = 2+ FROM instructions
+        } catch (Exception e) {
+            log.warn("Failed to read Dockerfile: {}", e.getMessage());
+            return true; // Assume multi-stage if can't read — don't override
+        }
     }
 
     private DeploymentResponse mapToResponse(Deployment deployment) {
