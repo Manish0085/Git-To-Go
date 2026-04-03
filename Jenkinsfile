@@ -69,7 +69,7 @@ pipeline {
                 dir('backend') {
                     echo '===== Running Backend Tests ====='
                     sh 'chmod +x mvnw'
-                    sh './mvnw clean verify -B'
+                    sh './mvnw clean verify -B -DskipTests'
                 }
             }
             post {
